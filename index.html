@@ -1,0 +1,347 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  Plus, 
+  Trash2, 
+  TrendingUp, 
+  TrendingDown, 
+  Wallet, 
+  PieChart, 
+  ShoppingBag, 
+  Home, 
+  Car, 
+  Coffee, 
+  Activity, 
+  MoreHorizontal,
+  DollarSign
+} from 'lucide-react';
+import { 
+  PieChart as RePieChart, 
+  Pie, 
+  Cell, 
+  ResponsiveContainer, 
+  Tooltip, 
+  Legend 
+} from 'recharts';
+
+// --- Componenti UI Riutilizzabili ---
+
+const Card = ({ children, className = "" }) => (
+  <div className={`bg-white rounded-2xl shadow-sm border border-slate-100 ${className}`}>
+    {children}
+  </div>
+);
+
+const Button = ({ children, onClick, variant = "primary", className = "", type = "button" }) => {
+  const baseStyle = "px-4 py-3 rounded-xl font-medium transition-all active:scale-95 flex items-center justify-center gap-2";
+  const variants = {
+    primary: "bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200 shadow-md",
+    danger: "bg-red-50 text-red-600 hover:bg-red-100",
+    ghost: "bg-slate-100 text-slate-600 hover:bg-slate-200"
+  };
+  return (
+    <button type={type} onClick={onClick} className={`${baseStyle} ${variants[variant]} ${className}`}>
+      {children}
+    </button>
+  );
+};
+
+// --- Costanti e Configurazioni ---
+
+const CATEGORIES = [
+  { id: 'alimentari', label: 'Alimentari', icon: ShoppingBag, color: '#10B981' }, // Smeraldo
+  { id: 'casa', label: 'Casa & Bollette', icon: Home, color: '#3B82F6' },       // Blu
+  { id: 'trasporti', label: 'Trasporti', icon: Car, color: '#F59E0B' },         // Ambra
+  { id: 'svago', label: 'Svago', icon: Coffee, color: '#8B5CF6' },              // Viola
+  { id: 'salute', label: 'Salute', icon: Activity, color: '#EF4444' },          // Rosso
+  { id: 'altro', label: 'Altro', icon: MoreHorizontal, color: '#64748B' },      // Grigio
+];
+
+const COLORS = CATEGORIES.reduce((acc, cat) => ({ ...acc, [cat.label]: cat.color }), {});
+
+// --- Logica Principale ---
+
+export default function App() {
+  // Stato iniziale caricato da localStorage se disponibile
+  const [transactions, setTransactions] = useState(() => {
+    const saved = localStorage.getItem('expenses_data');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [description, setDescription] = useState('');
+  const [amount, setAmount] = useState('');
+  const [type, setType] = useState('expense'); // 'expense' o 'income'
+  const [category, setCategory] = useState(CATEGORIES[0].id);
+
+  // Salvataggio automatico
+  useEffect(() => {
+    localStorage.setItem('expenses_data', JSON.stringify(transactions));
+  }, [transactions]);
+
+  // Calcoli derivati
+  const { balance, income, expense, chartData } = useMemo(() => {
+    let bal = 0;
+    let inc = 0;
+    let exp = 0;
+    const catStats = {};
+
+    transactions.forEach(t => {
+      const val = parseFloat(t.amount);
+      if (t.type === 'income') {
+        inc += val;
+        bal += val;
+      } else {
+        exp += val;
+        bal -= val;
+        // Raggruppa per grafico
+        const catLabel = CATEGORIES.find(c => c.id === t.category)?.label || 'Altro';
+        catStats[catLabel] = (catStats[catLabel] || 0) + val;
+      }
+    });
+
+    const cData = Object.entries(catStats).map(([name, value]) => ({ name, value }));
+
+    return { balance: bal, income: inc, expense: exp, chartData: cData };
+  }, [transactions]);
+
+  const handleAddTransaction = (e) => {
+    e.preventDefault();
+    if (!description || !amount) return;
+
+    const newTransaction = {
+      id: Date.now(),
+      description,
+      amount: parseFloat(amount),
+      type,
+      category: type === 'income' ? 'stipendio' : category,
+      date: new Date().toISOString()
+    };
+
+    setTransactions([newTransaction, ...transactions]);
+    setDescription('');
+    setAmount('');
+  };
+
+  const handleDelete = (id) => {
+    setTransactions(transactions.filter(t => t.id !== id));
+  };
+
+  const formatCurrency = (val) => {
+    return new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(val);
+  };
+
+  const formatDate = (isoString) => {
+    return new Date(isoString).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' });
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-800 pb-20 md:pb-10">
+      
+      {/* Header Mobile App Style */}
+      <div className="bg-blue-600 text-white p-6 pb-24 rounded-b-[2.5rem] shadow-lg relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-5 rounded-full -mr-20 -mt-20 pointer-events-none"></div>
+        <div className="relative z-10 max-w-2xl mx-auto">
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <p className="text-blue-100 text-sm font-medium">Benvenuto</p>
+              <h1 className="text-2xl font-bold">Le tue Finanze</h1>
+            </div>
+            <div className="bg-white/20 p-2 rounded-full backdrop-blur-sm">
+              <Wallet className="w-6 h-6 text-white" />
+            </div>
+          </div>
+
+          <div className="text-center mb-2">
+            <p className="text-blue-100 mb-1">Saldo Totale</p>
+            <h2 className="text-4xl font-bold tracking-tight">{formatCurrency(balance)}</h2>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-2xl mx-auto px-4 -mt-16 relative z-20 space-y-6">
+        
+        {/* Card Riepilogo Entrate/Uscite */}
+        <Card className="flex justify-between p-4 divide-x divide-slate-100">
+          <div className="flex-1 px-4 text-center">
+            <div className="flex items-center justify-center gap-2 text-emerald-600 mb-1">
+              <div className="p-1.5 bg-emerald-100 rounded-full">
+                <TrendingUp size={16} />
+              </div>
+              <span className="text-sm font-semibold">Entrate</span>
+            </div>
+            <p className="text-lg font-bold text-slate-700">{formatCurrency(income)}</p>
+          </div>
+          <div className="flex-1 px-4 text-center">
+            <div className="flex items-center justify-center gap-2 text-rose-600 mb-1">
+              <div className="p-1.5 bg-rose-100 rounded-full">
+                <TrendingDown size={16} />
+              </div>
+              <span className="text-sm font-semibold">Uscite</span>
+            </div>
+            <p className="text-lg font-bold text-slate-700">{formatCurrency(expense)}</p>
+          </div>
+        </Card>
+
+        {/* Grafico (mostrato solo se ci sono uscite) */}
+        {chartData.length > 0 && (
+          <Card className="p-6">
+            <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+              <PieChart className="w-5 h-5 text-blue-500" />
+              Dove spendi di più
+            </h3>
+            <div className="h-64 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <RePieChart>
+                  <Pie
+                    data={chartData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={80}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {chartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[entry.name] || '#cbd5e1'} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value) => formatCurrency(value)} />
+                  <Legend verticalAlign="bottom" height={36} iconType="circle" />
+                </RePieChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+        )}
+
+        {/* Form Aggiunta */}
+        <Card className="p-5">
+          <h3 className="font-bold text-slate-700 mb-4">Nuova Transazione</h3>
+          <form onSubmit={handleAddTransaction} className="space-y-4">
+            
+            {/* Toggle Tipo */}
+            <div className="flex p-1 bg-slate-100 rounded-xl mb-4">
+              <button
+                type="button"
+                onClick={() => setType('expense')}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
+                  type === 'expense' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                Spesa
+              </button>
+              <button
+                type="button"
+                onClick={() => setType('income')}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
+                  type === 'income' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                Entrata
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <input
+                  type="text"
+                  placeholder="Descrizione (es. Spesa Esselunga)"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                  required
+                />
+              </div>
+              
+              <div className="relative">
+                <span className="absolute left-3 top-3 text-slate-400">€</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="w-full p-3 pl-8 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all font-mono"
+                  required
+                />
+              </div>
+
+              {type === 'expense' ? (
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
+                >
+                  {CATEGORIES.map(cat => (
+                    <option key={cat.id} value={cat.id}>{cat.label}</option>
+                  ))}
+                </select>
+              ) : (
+                <div className="flex items-center justify-center text-slate-400 text-sm bg-slate-50 rounded-xl border border-slate-200">
+                  Stipendio/Extra
+                </div>
+              )}
+            </div>
+
+            <Button type="submit" className="w-full mt-2">
+              <Plus className="w-5 h-5" />
+              Aggiungi {type === 'expense' ? 'Spesa' : 'Entrata'}
+            </Button>
+          </form>
+        </Card>
+
+        {/* Lista Transazioni */}
+        <div className="space-y-3 pb-8">
+          <h3 className="font-bold text-slate-700 px-1">Ultime Attività</h3>
+          
+          {transactions.length === 0 ? (
+            <div className="text-center py-10 text-slate-400">
+              <Wallet className="w-12 h-12 mx-auto mb-3 opacity-20" />
+              <p>Nessuna transazione ancora.</p>
+              <p className="text-sm">Inizia aggiungendo una spesa!</p>
+            </div>
+          ) : (
+            transactions.map((t) => {
+              const CatIcon = t.type === 'income' 
+                ? DollarSign 
+                : CATEGORIES.find(c => c.id === t.category)?.icon || MoreHorizontal;
+              
+              return (
+                <Card key={t.id} className="p-4 flex items-center justify-between group transition-all hover:shadow-md">
+                  <div className="flex items-center gap-4">
+                    <div className={`p-3 rounded-full ${t.type === 'income' ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>
+                      <CatIcon size={20} />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-slate-800">{t.description}</p>
+                      <div className="flex items-center gap-2 text-xs text-slate-500">
+                        <span>{formatDate(t.date)}</span>
+                        {t.type === 'expense' && (
+                          <>
+                            <span>•</span>
+                            <span className="capitalize">{CATEGORIES.find(c => c.id === t.category)?.label}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-4">
+                    <span className={`font-mono font-bold ${t.type === 'income' ? 'text-emerald-600' : 'text-slate-800'}`}>
+                      {t.type === 'expense' ? '-' : '+'}{formatCurrency(t.amount)}
+                    </span>
+                    <button 
+                      onClick={() => handleDelete(t.id)}
+                      className="text-slate-300 hover:text-red-500 transition-colors p-2"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+                </Card>
+              );
+            })
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
